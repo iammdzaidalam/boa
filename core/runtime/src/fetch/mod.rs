@@ -206,19 +206,23 @@ pub use js_module::fetch;
 /// Register the `fetch` function in the realm, as well as ALL supporting classes.
 /// Pass `None` as the realm to register globally.
 ///
+/// # Panics
+///
+/// Panics if the `Headers Iterator` class is not registered.
+///
 /// # Errors
 /// If any of the classes fail to register, an error is returned.
 pub fn register<F: Fetcher>(
     fetcher: F,
-    realm: Option<Realm>,
+    realm: Option<&Realm>,
     context: &mut Context,
 ) -> JsResult<()> {
-    if let Some(ref realm) = realm {
+    if let Some(realm) = realm {
         realm.host_defined_mut().insert(FetcherRc(Rc::new(fetcher)));
     } else {
         context.insert_data(FetcherRc(Rc::new(fetcher)));
     }
-    js_module::boa_register::<F>(realm.clone(), context)?;
+    js_module::boa_register::<F>(realm.cloned(), context)?;
 
     if realm.is_none() {
         context.register_global_class::<headers_iterator::HeadersIterator>()?;

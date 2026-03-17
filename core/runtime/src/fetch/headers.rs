@@ -272,7 +272,7 @@ impl JsHeaders {
         )
     }
 
-    /// [Symbol.iterator]() is an alias for entries()
+    /// [Symbol.iterator]() is an alias for `entries()`
     #[boa(symbol = "iterator")]
     fn symbol_iterator(this: JsClass<Self>, context: &mut Context) -> JsValue {
         HeadersIterator::create_headers_iterator(

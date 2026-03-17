@@ -117,7 +117,7 @@ pub struct FetchExtension<F: crate::fetch::Fetcher>(pub F);
 #[cfg(feature = "fetch")]
 impl<F: crate::fetch::Fetcher + Debug + 'static> RuntimeExtension for FetchExtension<F> {
     fn register(self, realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-        crate::fetch::register(self.0, realm, context)
+        crate::fetch::register(self.0, realm.as_ref(), context)
     }
 }
 
