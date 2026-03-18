@@ -227,8 +227,9 @@ pub fn register<F: Fetcher>(
     if realm.is_none() {
         context.register_global_class::<headers_iterator::HeadersIterator>()?;
 
-        // `#[boa_class]` cannot express symbol-keyed static properties, so
-        // we set `@@toStringTag` on the prototype manually after registration.
+        // `#[boa_class]` can parse symbol-keyed members, but it only emits
+        // methods/accessors. `@@toStringTag` here needs to be a data property
+        // on the prototype, so we define it manually after registration.
         let proto = context
             .get_global_class::<headers_iterator::HeadersIterator>()
             .expect("just registered")
