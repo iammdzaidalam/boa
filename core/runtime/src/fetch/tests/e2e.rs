@@ -89,3 +89,41 @@ fn custom_header() {
         TestAction::inspect_context(await_response),
     ]);
 }
+
+#[test]
+fn headers_iterator_with_realm() {
+    run_test_actions([TestAction::inspect_context(|ctx: &mut Context| {
+        let fetcher = E2eFetcher;
+        let realm = ctx.create_realm().unwrap();
+        crate::fetch::register(fetcher, Some(&realm), ctx).unwrap();
+
+        let old_realm = ctx.enter_realm(realm);
+
+        let source = boa_engine::Source::from_bytes(
+            r#"
+                globalThis.test_result = (async () => {
+                    const response = await fetch("http://unit.test/headers?header=test");
+                    const iterator = response.headers.entries();
+                    const proto = Object.getPrototypeOf(iterator);
+
+                    return (
+                        Object.prototype.toString.call(iterator) === "[object Headers Iterator]" &&
+                        iterator[Symbol.toStringTag] === "Headers Iterator" &&
+                        proto?.[Symbol.toStringTag] === "Headers Iterator"
+                    );
+                })();
+            "#,
+        );
+        ctx.eval(source).unwrap();
+
+        let result = ctx
+            .global_object()
+            .get(js_str!("test_result"), ctx)
+            .unwrap();
+        let promise_val = result.as_promise().unwrap().await_blocking(ctx).unwrap();
+
+        ctx.enter_realm(old_realm);
+
+        assert!(promise_val.as_boolean().unwrap_or(false));
+    })]);
+}

@@ -222,9 +222,10 @@ pub fn register<F: Fetcher>(
     } else {
         context.insert_data(FetcherRc(Rc::new(fetcher)));
     }
-    js_module::boa_register::<F>(realm.cloned(), context)?;
 
-    if realm.is_none() {
+    let register_classes = |context: &mut Context| -> JsResult<()> {
+        js_module::boa_register::<F>(None, context)?;
+
         context.register_global_class::<headers_iterator::HeadersIterator>()?;
 
         // `#[boa_class]` can parse symbol-keyed members, but it only emits
@@ -242,6 +243,16 @@ pub fn register<F: Fetcher>(
                 .build(),
             context,
         )?;
+        Ok(())
+    };
+
+    if let Some(realm) = realm {
+        let old_realm = context.enter_realm(realm.clone());
+        let result = register_classes(context);
+        context.enter_realm(old_realm);
+        result?;
+    } else {
+        register_classes(context)?;
     }
 
     Ok(())
