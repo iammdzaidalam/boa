@@ -23,7 +23,7 @@ use super::headers::JsHeaders;
 /// [spec]: https://fetch.spec.whatwg.org/#headers-class
 #[derive(Debug, Finalize, Trace, JsData)]
 pub(crate) struct HeadersIterator {
-    iterated_headers: JsObject,
+    iterated_headers: JsObject<JsHeaders>,
     next_index: usize,
     #[unsafe_ignore_trace]
     iteration_kind: PropertyNameKind,
@@ -47,25 +47,19 @@ impl HeadersIterator {
     fn next(&mut self, context: &mut Context) -> JsResult<JsValue> {
         let item_kind = self.iteration_kind;
 
-        let element = {
-            let headers = self
-                .iterated_headers
-                .downcast_ref::<JsHeaders>()
-                .ok_or_else(|| {
-                    JsNativeError::typ().with_message("Object is not a Headers object")
-                })?;
-
-            headers
-                .headers_map()
-                .iter()
-                .nth(self.next_index)
-                .map(|(k, v)| {
-                    (
-                        JsValue::from(JsString::from(k.as_str())),
-                        JsValue::from(JsString::from(v.to_str().unwrap_or(""))),
-                    )
-                })
-        };
+        let element = self
+            .iterated_headers
+            .borrow()
+            .data()
+            .headers_map()
+            .iter()
+            .nth(self.next_index)
+            .map(|(k, v)| {
+                (
+                    JsValue::from(JsString::from(k.as_str())),
+                    JsValue::from(JsString::from(v.to_str().unwrap_or(""))),
+                )
+            });
 
         if let Some((key, value)) = element {
             self.next_index += 1;
@@ -91,29 +85,37 @@ impl HeadersIterator {
     #[boa(method)]
     #[boa(symbol = "iterator")]
     fn symbol_iterator(this: JsClass<Self>) -> JsValue {
-        this.inner().clone().upcast().into()
+        this.inner().into()
     }
 }
 
 impl HeadersIterator {
     /// Creates a new iterator over the given `Headers` object.
     pub(crate) fn create_headers_iterator(
-        headers: JsObject,
+        headers: JsObject<JsHeaders>,
         kind: PropertyNameKind,
         context: &mut Context,
     ) -> JsValue {
+        let headers_realm = headers.borrow().data().realm.clone();
+
         let iter = Self {
             iterated_headers: headers,
             next_index: 0,
             iteration_kind: kind,
         };
-        let headers_iterator = JsObject::from_proto_and_data(
-            context
-                .get_global_class::<Self>()
-                .expect("Headers Iterator not registered")
-                .prototype(),
-            iter,
-        );
+
+        let proto = headers_realm
+            .as_ref()
+            .and_then(|realm| realm.get_class::<Self>())
+            .map(|class| class.prototype())
+            .or_else(|| {
+                context
+                    .get_global_class::<Self>()
+                    .map(|class| class.prototype())
+            })
+            .expect("Headers Iterator not registered");
+
+        let headers_iterator = JsObject::from_proto_and_data(proto, iter);
         headers_iterator.into()
     }
 }

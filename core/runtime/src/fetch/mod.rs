@@ -159,9 +159,11 @@ async fn fetch_inner<T: Fetcher>(
         request.headers_mut().append("Accept-Language", lang);
     }
 
-    let response = fetcher
+    let mut response = fetcher
         .fetch(JsRequest::from(request), signal.clone(), context)
         .await?;
+
+    response.realm = Some(context.borrow().realm().clone());
 
     check_abort(signal.as_ref(), &mut context.borrow_mut())?;
 
@@ -181,6 +183,7 @@ pub mod js_module {
     type JsHeaders = super::JsHeaders;
     type JsRequest = super::JsRequest;
     type JsResponse = super::JsResponse;
+    type HeadersIterator = super::headers_iterator::HeadersIterator;
 
     /// The `fetch` function.
     ///
@@ -223,37 +226,29 @@ pub fn register<F: Fetcher>(
         context.insert_data(FetcherRc(Rc::new(fetcher)));
     }
 
-    let register_classes = |context: &mut Context| -> JsResult<()> {
-        js_module::boa_register::<F>(None, context)?;
+    js_module::boa_register::<F>(realm.cloned(), context)?;
 
-        context.register_global_class::<headers_iterator::HeadersIterator>()?;
-
-        // `#[boa_class]` can parse symbol-keyed members, but it only emits
-        // methods/accessors. `@@toStringTag` here needs to be a data property
-        // on the prototype, so we define it manually after registration.
-        let proto = context
+    // `#[boa_class]` can parse symbol-keyed members, but it only emits
+    // methods/accessors. `@@toStringTag` here needs to be a data property
+    // on the prototype, so we define it manually after registration.
+    let proto = match realm {
+        Some(realm) => realm
+            .get_class::<headers_iterator::HeadersIterator>()
+            .expect("just registered")
+            .prototype(),
+        None => context
             .get_global_class::<headers_iterator::HeadersIterator>()
             .expect("just registered")
-            .prototype();
-        proto.define_property_or_throw(
-            boa_engine::JsSymbol::to_string_tag(),
-            boa_engine::property::PropertyDescriptor::builder()
-                .value(JsString::from("Headers Iterator"))
-                .configurable(true)
-                .build(),
-            context,
-        )?;
-        Ok(())
+            .prototype(),
     };
-
-    if let Some(realm) = realm {
-        let old_realm = context.enter_realm(realm.clone());
-        let result = register_classes(context);
-        context.enter_realm(old_realm);
-        result?;
-    } else {
-        register_classes(context)?;
-    }
+    proto.define_property_or_throw(
+        boa_engine::JsSymbol::to_string_tag(),
+        boa_engine::property::PropertyDescriptor::builder()
+            .value(JsString::from("Headers Iterator"))
+            .configurable(true)
+            .build(),
+        context,
+    )?;
 
     Ok(())
 }

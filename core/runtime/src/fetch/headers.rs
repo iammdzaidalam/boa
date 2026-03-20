@@ -8,6 +8,7 @@ use boa_engine::object::builtins::TypedJsFunction;
 use boa_engine::value::{Convert, TryFromJs};
 use boa_engine::{
     Context, Finalize, JsData, JsObject, JsResult, JsString, JsValue, Trace, boa_class, js_error,
+    realm::Realm,
 };
 use http::header::HeaderMap as HttpHeaderMap;
 use http::{HeaderName, HeaderValue};
@@ -53,6 +54,9 @@ fn to_header_value(value: impl AsRef<str>) -> JsResult<HeaderValue> {
 pub struct JsHeaders {
     #[unsafe_ignore_trace]
     headers: Rc<RefCell<HttpHeaderMap>>,
+
+    #[unsafe_ignore_trace]
+    pub(crate) realm: Option<Realm>,
 }
 
 impl TryFromJs for JsHeaders {
@@ -68,6 +72,7 @@ impl JsHeaders {
     pub fn from_http(http: HttpHeaderMap) -> Self {
         Self {
             headers: Rc::new(RefCell::new(http)),
+            realm: None,
         }
     }
 
@@ -80,6 +85,7 @@ impl JsHeaders {
     pub(crate) fn deep_clone(&self) -> Self {
         Self {
             headers: Rc::new(RefCell::new((*self.headers.borrow()).clone())),
+            realm: self.realm.clone(),
         }
     }
 
@@ -94,7 +100,8 @@ impl JsHeaders {
 impl JsHeaders {
     #[boa(constructor)]
     fn constructor(init: JsValue, context: &mut Context) -> JsResult<Self> {
-        let headers = JsHeaders::default();
+        let mut headers = JsHeaders::default();
+        headers.realm = Some(context.realm().clone());
         if init.is_undefined() {
             return Ok(headers);
         }
@@ -170,7 +177,7 @@ impl JsHeaders {
     #[boa(method)]
     pub fn entries(this: JsClass<Self>, context: &mut Context) -> JsValue {
         HeadersIterator::create_headers_iterator(
-            this.inner().clone().upcast(),
+            this.inner(),
             PropertyNameKind::KeyAndValue,
             context,
         )
@@ -247,11 +254,7 @@ impl JsHeaders {
     /// contained in this object.
     #[boa(method)]
     fn keys(this: JsClass<Self>, context: &mut Context) -> JsValue {
-        HeadersIterator::create_headers_iterator(
-            this.inner().clone().upcast(),
-            PropertyNameKind::Key,
-            context,
-        )
+        HeadersIterator::create_headers_iterator(this.inner(), PropertyNameKind::Key, context)
     }
 
     /// Sets a new value for an existing header inside a Headers object, or adds the
@@ -265,18 +268,14 @@ impl JsHeaders {
 
     #[boa(method)]
     fn values(this: JsClass<Self>, context: &mut Context) -> JsValue {
-        HeadersIterator::create_headers_iterator(
-            this.inner().clone().upcast(),
-            PropertyNameKind::Value,
-            context,
-        )
+        HeadersIterator::create_headers_iterator(this.inner(), PropertyNameKind::Value, context)
     }
 
     /// [Symbol.iterator]() is an alias for `entries()`
     #[boa(symbol = "iterator")]
     fn symbol_iterator(this: JsClass<Self>, context: &mut Context) -> JsValue {
         HeadersIterator::create_headers_iterator(
-            this.inner().clone().upcast(),
+            this.inner(),
             PropertyNameKind::KeyAndValue,
             context,
         )

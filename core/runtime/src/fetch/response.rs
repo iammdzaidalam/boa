@@ -9,8 +9,8 @@ use crate::fetch::headers::JsHeaders;
 use boa_engine::object::builtins::{JsPromise, JsUint8Array};
 use boa_engine::value::{Convert, TryFromJs, TryIntoJs};
 use boa_engine::{
-    Context, JsData, JsNativeError, JsResult, JsString, JsValue, boa_class, js_error, js_str,
-    js_string,
+    Context, JsData, JsNativeError, JsObject, JsResult, JsString, JsValue, boa_class, js_error,
+    js_str, js_string, realm::Realm,
 };
 use boa_gc::{Finalize, Trace};
 use http::{HeaderName, HeaderValue, StatusCode};
@@ -141,6 +141,9 @@ pub struct JsResponse {
 
     #[unsafe_ignore_trace]
     body: Rc<Vec<u8>>,
+
+    #[unsafe_ignore_trace]
+    pub(crate) realm: Option<Realm>,
 }
 
 impl JsResponse {
@@ -160,6 +163,7 @@ impl JsResponse {
             status_text,
             headers,
             body,
+            realm: None,
         }
     }
 
@@ -177,6 +181,7 @@ impl JsResponse {
             status_text: JsString::default(),
             headers: JsHeaders::default(),
             body: Rc::new(Vec::new()),
+            realm: None,
         }
     }
 
@@ -268,6 +273,7 @@ fn initialize_response(
         status_text,
         headers,
         body,
+        realm: None,
     })
 }
 
@@ -324,6 +330,7 @@ impl JsResponse {
             status_text: JsString::from(status_code.canonical_reason().unwrap_or("")),
             headers: JsHeaders::from_http(headers),
             body: Rc::new(Vec::new()),
+            realm: None,
         })
     }
 
@@ -410,9 +417,23 @@ impl JsResponse {
     ///
     /// See <https://fetch.spec.whatwg.org/#dom-response-headers>
     #[boa(getter)]
-    #[must_use]
-    pub fn headers(&self) -> JsHeaders {
-        self.headers.clone()
+    pub fn headers(&self, context: &mut Context) -> JsValue {
+        let mut headers = self.headers.clone();
+        headers.realm = self.realm.clone();
+
+        let proto = self
+            .realm
+            .as_ref()
+            .and_then(|realm| realm.get_class::<JsHeaders>())
+            .map(|class| class.prototype())
+            .or_else(|| {
+                context
+                    .get_global_class::<JsHeaders>()
+                    .map(|class| class.prototype())
+            })
+            .expect("Headers not registered");
+
+        JsObject::from_proto_and_data(proto, headers).into()
     }
 
     /// See <https://fetch.spec.whatwg.org/#dom-response-type>
@@ -455,6 +476,7 @@ impl JsResponse {
             status_text: self.status_text.clone(),
             headers: self.headers.deep_clone(),
             body: Rc::new((*self.body).clone()),
+            realm: self.realm.clone(),
         }
     }
 
