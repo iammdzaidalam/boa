@@ -416,15 +416,19 @@ impl JsResponse {
     /// Returns the headers associated with the response.
     ///
     /// See <https://fetch.spec.whatwg.org/#dom-response-headers>
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Headers` has not been registered in the current realm.
     #[boa(getter)]
     pub fn headers(&self, context: &mut Context) -> JsValue {
         let mut headers = self.headers.clone();
-        headers.realm = self.realm.clone();
+        headers.realm.clone_from(&self.realm);
 
         let proto = self
             .realm
             .as_ref()
-            .and_then(|realm| realm.get_class::<JsHeaders>())
+            .and_then(Realm::get_class::<JsHeaders>)
             .map(|class| class.prototype())
             .or_else(|| {
                 context

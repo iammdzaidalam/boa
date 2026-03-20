@@ -8,7 +8,7 @@
 use boa_engine::{
     Context, JsData, JsResult, JsString, JsValue, boa_class,
     builtins::iterable::create_iter_result_object, error::JsNativeError, interop::JsClass,
-    object::JsObject, object::builtins::JsArray, property::PropertyNameKind,
+    object::JsObject, object::builtins::JsArray, property::PropertyNameKind, realm::Realm,
 };
 use boa_gc::{Finalize, Trace};
 
@@ -44,7 +44,7 @@ impl HeadersIterator {
     ///
     /// Advances the iterator and returns the next `{ value, done }` result.
     #[boa(method)]
-    fn next(&mut self, context: &mut Context) -> JsResult<JsValue> {
+    fn next(&mut self, context: &mut Context) -> JsValue {
         let item_kind = self.iteration_kind;
 
         let element = self
@@ -65,20 +65,16 @@ impl HeadersIterator {
             self.next_index += 1;
 
             return match item_kind {
-                PropertyNameKind::Key => Ok(create_iter_result_object(key, false, context)),
-                PropertyNameKind::Value => Ok(create_iter_result_object(value, false, context)),
+                PropertyNameKind::Key => create_iter_result_object(key, false, context),
+                PropertyNameKind::Value => create_iter_result_object(value, false, context),
                 PropertyNameKind::KeyAndValue => {
                     let result = JsArray::from_iter([key, value], context);
-                    Ok(create_iter_result_object(result.into(), false, context))
+                    create_iter_result_object(result.into(), false, context)
                 }
             };
         }
 
-        Ok(create_iter_result_object(
-            JsValue::undefined(),
-            true,
-            context,
-        ))
+        create_iter_result_object(JsValue::undefined(), true, context)
     }
 
     /// Returns `this`, making the iterator itself iterable (`for...of` support).
@@ -106,7 +102,7 @@ impl HeadersIterator {
 
         let proto = headers_realm
             .as_ref()
-            .and_then(|realm| realm.get_class::<Self>())
+            .and_then(Realm::get_class::<Self>)
             .map(|class| class.prototype())
             .or_else(|| {
                 context
