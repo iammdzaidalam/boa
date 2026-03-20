@@ -422,9 +422,6 @@ impl JsResponse {
     /// Panics if `Headers` has not been registered in the current realm.
     #[boa(getter)]
     pub fn headers(&self, context: &mut Context) -> JsValue {
-        let mut headers = self.headers.clone();
-        headers.realm.clone_from(&self.realm);
-
         let proto = self
             .realm
             .as_ref()
@@ -437,7 +434,7 @@ impl JsResponse {
             })
             .expect("Headers not registered");
 
-        JsObject::from_proto_and_data(proto, headers).into()
+        JsObject::from_proto_and_data(proto, self.headers.clone()).into()
     }
 
     /// See <https://fetch.spec.whatwg.org/#dom-response-type>

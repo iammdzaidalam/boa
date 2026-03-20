@@ -8,7 +8,6 @@ use boa_engine::object::builtins::TypedJsFunction;
 use boa_engine::value::{Convert, TryFromJs};
 use boa_engine::{
     Context, Finalize, JsData, JsObject, JsResult, JsString, JsValue, Trace, boa_class, js_error,
-    realm::Realm,
 };
 use http::header::HeaderMap as HttpHeaderMap;
 use http::{HeaderName, HeaderValue};
@@ -54,9 +53,6 @@ fn to_header_value(value: impl AsRef<str>) -> JsResult<HeaderValue> {
 pub struct JsHeaders {
     #[unsafe_ignore_trace]
     headers: Rc<RefCell<HttpHeaderMap>>,
-
-    #[unsafe_ignore_trace]
-    pub(crate) realm: Option<Realm>,
 }
 
 impl TryFromJs for JsHeaders {
@@ -72,7 +68,6 @@ impl JsHeaders {
     pub fn from_http(http: HttpHeaderMap) -> Self {
         Self {
             headers: Rc::new(RefCell::new(http)),
-            realm: None,
         }
     }
 
@@ -85,7 +80,6 @@ impl JsHeaders {
     pub(crate) fn deep_clone(&self) -> Self {
         Self {
             headers: Rc::new(RefCell::new((*self.headers.borrow()).clone())),
-            realm: self.realm.clone(),
         }
     }
 
@@ -100,8 +94,7 @@ impl JsHeaders {
 impl JsHeaders {
     #[boa(constructor)]
     fn constructor(init: JsValue, context: &mut Context) -> JsResult<Self> {
-        let mut headers = JsHeaders::default();
-        headers.realm = Some(context.realm().clone());
+        let headers = JsHeaders::default();
         if init.is_undefined() {
             return Ok(headers);
         }

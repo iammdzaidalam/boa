@@ -6,9 +6,10 @@
 //! [spec]: https://fetch.spec.whatwg.org/#headers-class
 
 use boa_engine::{
-    Context, JsData, JsResult, JsString, JsValue, boa_class,
+    Context, JsData, JsResult, JsString, JsSymbol, JsValue, boa_class,
     builtins::iterable::create_iter_result_object, error::JsNativeError, interop::JsClass,
-    object::JsObject, object::builtins::JsArray, property::PropertyNameKind, realm::Realm,
+    object::JsObject, object::builtins::JsArray, property::PropertyDescriptor,
+    property::PropertyNameKind,
 };
 use boa_gc::{Finalize, Trace};
 
@@ -92,7 +93,28 @@ impl HeadersIterator {
         kind: PropertyNameKind,
         context: &mut Context,
     ) -> JsValue {
-        let headers_realm = headers.borrow().data().realm.clone();
+        // Ensure the iterator class is registered in the active realm.
+        if !context.realm().has_class::<Self>() {
+            context
+                .register_global_class::<Self>()
+                .expect("failed to register HeadersIterator");
+
+            let proto = context
+                .realm()
+                .get_class::<Self>()
+                .expect("just registered")
+                .prototype();
+            proto
+                .define_property_or_throw(
+                    JsSymbol::to_string_tag(),
+                    PropertyDescriptor::builder()
+                        .value(JsString::from("Headers Iterator"))
+                        .configurable(true)
+                        .build(),
+                    context,
+                )
+                .expect("failed to set @@toStringTag");
+        }
 
         let iter = Self {
             iterated_headers: headers,
@@ -100,16 +122,11 @@ impl HeadersIterator {
             iteration_kind: kind,
         };
 
-        let proto = headers_realm
-            .as_ref()
-            .and_then(Realm::get_class::<Self>)
-            .map(|class| class.prototype())
-            .or_else(|| {
-                context
-                    .get_global_class::<Self>()
-                    .map(|class| class.prototype())
-            })
-            .expect("Headers Iterator not registered");
+        let proto = context
+            .realm()
+            .get_class::<Self>()
+            .expect("Headers Iterator not registered")
+            .prototype();
 
         let headers_iterator = JsObject::from_proto_and_data(proto, iter);
         headers_iterator.into()
