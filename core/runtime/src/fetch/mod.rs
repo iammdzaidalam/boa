@@ -159,11 +159,9 @@ async fn fetch_inner<T: Fetcher>(
         request.headers_mut().append("Accept-Language", lang);
     }
 
-    let mut response = fetcher
+    let response = fetcher
         .fetch(JsRequest::from(request), signal.clone(), context)
         .await?;
-
-    response.realm = Some(context.borrow().realm().clone());
 
     check_abort(signal.as_ref(), &mut context.borrow_mut())?;
 

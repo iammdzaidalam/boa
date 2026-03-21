@@ -95,6 +95,7 @@ fn headers_iterator_with_realm() {
     run_test_actions([TestAction::inspect_context(|ctx: &mut Context| {
         let fetcher = E2eFetcher;
         let realm = ctx.create_realm().unwrap();
+        crate::fetch::register(E2eFetcher, None, ctx).unwrap();
         crate::fetch::register(fetcher, Some(&realm), ctx).unwrap();
 
         let old_realm = ctx.enter_realm(realm);
